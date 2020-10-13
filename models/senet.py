@@ -42,35 +42,6 @@ class MainClassifier(nn.Module):
         return x
 
 
-class AuxiliaryClassifier(nn.Module):
-
-    def __init__(self, channel, num_classes=100):
-        super(AuxiliaryClassifier, self).__init__()
-        self.bottleneck_layer = self._make_bottleneck_layer(channel)
-        self.fc = nn.Linear(channel, num_classes)
-        self.pool = nn.AdaptiveAvgPool2d(1)
-
-    def _make_bottleneck_layer(self, channel):
-        return nn.Sequential(
-            nn.Conv2d(channel, channel // 2, kernel_size=1, stride=1),
-            nn.BatchNorm2d(channel // 2),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(channel // 2, channel // 2, kernel_size=2, stride=1),
-            nn.BatchNorm2d(channel // 2),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(channel // 2, channel, kernel_size=1, stride=1),
-            nn.BatchNorm2d(channel),
-            nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool2d(1)
-        )
-
-    def forward(self, x):
-        x = self.bottleneck_layer(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
-        return x
-
-
 class DeepwiseAuxiliaryClassifier(nn.Module):
 
     def __init__(self, channel, num_classes=100, downsample=0):
@@ -214,30 +185,7 @@ class SEResNet(nn.Module):
         self.deepwise2 = DeepwiseAuxiliaryClassifier(channel=128 * block.expansion, downsample=2)
         self.deepwise3 = DeepwiseAuxiliaryClassifier(channel=256 * block.expansion, downsample=1)
         self.deepwise4 = DeepwiseAuxiliaryClassifier(channel=512 * block.expansion, downsample=0)
-        self.bn_means, self.bn_vars = [], []
-        self.auxiliary_classifiers_list = nn.ModuleList([
-            self.deepwise4,
-            AuxiliaryClassifier(512 * block.expansion, num_classes=100),
-            AuxiliaryClassifier(512 * block.expansion, num_classes=100),
-            AuxiliaryClassifier(512 * block.expansion, num_classes=100),
-            AuxiliaryClassifier(512 * block.expansion, num_classes=100),
-        ])
 
-    def load_bn(self):
-        index = 0
-        for m in self.modules():
-            if isinstance(m, nn.BatchNorm2d):
-                m.running_mean.data = self.bn_means[index].clone()
-                m.running_var.data = self.bn_vars[index].clone()
-                index += 1
-        self.bn_vars = []
-        self.bn_means = []
-
-    def record_bn(self):
-        for m in self.modules():
-            if isinstance(m, nn.BatchNorm2d):
-                self.bn_means.append(m.running_mean.clone())
-                self.bn_vars.append(m.running_var.clone())
 
     def forward(self, x):
         feature_list = []

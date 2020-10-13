@@ -106,7 +106,7 @@ if args.model == "senet18":
     net = seresnet18()
 if args.model == "senet50":
     net = seresnet50()
-    
+
 #   get the teacher model
 if args.teacher == 'resnet18':
     teacher = resnet18()
