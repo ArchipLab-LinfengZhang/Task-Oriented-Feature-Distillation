@@ -12,13 +12,11 @@ from models.senet import *
 from utils import *
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-parser = argparse.ArgumentParser(description='Running Task-Oriented Feature Distillation. '
-                                             'The paper in in review, please do not distribute these codes. '
-                                             'Thanks !')
+parser = argparse.ArgumentParser(description='Task-Oriented Feature Distillation. ')
 parser.add_argument('--model', default="resnet18", help="choose the student model", type=str)
 parser.add_argument('--dataset', default="cifar100", type=str, help="cifar10/cifar100")
 parser.add_argument('--alpha', default=0.05, type=float)
-parser.add_argument('--beta', default=0.4, type=float)
+parser.add_argument('--beta', default=0.03, type=float)
 parser.add_argument('--l2', default=7e-3, type=float)
 parser.add_argument('--teacher', default="resnet18", type=str)
 parser.add_argument('--t', default=3.0, type=float, help="temperature for logit distillation ")
@@ -108,7 +106,7 @@ if args.model == "senet18":
     net = seresnet18()
 if args.model == "senet50":
     net = seresnet50()
-
+    
 #   get the teacher model
 if args.teacher == 'resnet18':
     teacher = resnet18()
@@ -133,8 +131,6 @@ if __name__ == "__main__":
     print("Start Training")
     for epoch in range(250):
         if epoch in [80, 160, 240]:
-            #   orthogonal penalty decay
-            orthogonal_penalty /= 10
             for param_group in optimizer.param_groups:
                 param_group['lr'] /= 10
         net.train()
@@ -169,28 +165,24 @@ if __name__ == "__main__":
             #   compute loss
             loss = torch.FloatTensor([0.]).to(device)
 
-            if epoch < 230:
-                #   Distillation Loss + Task Loss
-                for index in range(len(student_feature)):
-                    student_feature[index] = net.link[index](student_feature[index])
-                    #   task-oriented feature distillation loss
-                    loss += torch.dist(student_feature[index], teacher_feature[index], p=2) * args.alpha
-                    #   task loss (cross entropy loss for the classification task)
-                    loss += criterion(outputs[index], labels)
-                    #   logit distillation loss, CrossEntropy implemented in utils.py.
-                    loss += CrossEntropy(outputs[index], teacher_logits[index], 1 + (args.t/250) * float(1+epoch))
-
-                # Orthogonal Loss
-                for index in range(len(student_feature)):
-                    weight = list(net.link[index].parameters())[0]
-                    weight_trans = weight.permute(1, 0)
-                    ones = torch.eye(weight.size(0)).cuda()
-                    ones2 = torch.eye(weight.size(1)).cuda()
-                    loss += torch.dist(torch.mm(weight, weight_trans), ones, p=2) * orthogonal_penalty
-                    loss += torch.dist(torch.mm(weight_trans, weight), ones2, p=2) * orthogonal_penalty
-                loss /= 10
-            else:
+            #   Distillation Loss + Task Loss
+            for index in range(len(student_feature)):
+                student_feature[index] = net.link[index](student_feature[index])
+                #   task-oriented feature distillation loss
+                loss += torch.dist(student_feature[index], teacher_feature[index], p=2) * args.alpha
+                #   task loss (cross entropy loss for the classification task)
                 loss += criterion(outputs[index], labels)
+                #   logit distillation loss, CrossEntropy implemented in utils.py.
+                loss += CrossEntropy(outputs[index], teacher_logits[index], 1 + (args.t/250) * float(1+epoch))
+
+            # Orthogonal Loss
+            for index in range(len(student_feature)):
+                weight = list(net.link[index].parameters())[0]
+                weight_trans = weight.permute(1, 0)
+                ones = torch.eye(weight.size(0)).cuda()
+                ones2 = torch.eye(weight.size(1)).cuda()
+                loss += torch.dist(torch.mm(weight, weight_trans), ones, p=2) * orthogonal_penalty
+                loss += torch.dist(torch.mm(weight_trans, weight), ones2, p=2) * orthogonal_penalty
 
             sum_loss += loss.item()
             optimizer.zero_grad()
