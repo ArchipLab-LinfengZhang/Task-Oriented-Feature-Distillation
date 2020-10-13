@@ -175,14 +175,6 @@ if __name__ == "__main__":
                 #   logit distillation loss, CrossEntropy implemented in utils.py.
                 loss += CrossEntropy(outputs[index], teacher_logits[index], 1 + (args.t/250) * float(1+epoch))
 
-            # Orthogonal Loss
-            for index in range(len(student_feature)):
-                weight = list(net.link[index].parameters())[0]
-                weight_trans = weight.permute(1, 0)
-                ones = torch.eye(weight.size(0)).cuda()
-                ones2 = torch.eye(weight.size(1)).cuda()
-                loss += torch.dist(torch.mm(weight, weight_trans), ones, p=2) * orthogonal_penalty
-                loss += torch.dist(torch.mm(weight_trans, weight), ones2, p=2) * orthogonal_penalty
 
             sum_loss += loss.item()
             optimizer.zero_grad()
