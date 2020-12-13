@@ -17,4 +17,4 @@ python distill.py --model=resnet18
 ```
 
 Note that you can choose resnet, senet and preactresnet models as students. Each model has five kinds of depth - 18, 34, 50, 101, and 152. 
-
+<img src="tofd.png"> 
