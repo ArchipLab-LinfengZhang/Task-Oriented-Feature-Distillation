@@ -10,6 +10,7 @@ from models.resnet import *
 from models.preactresnet import *
 from models.senet import *
 from utils import *
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser(description='Task-Oriented Feature Distillation. ')
@@ -27,9 +28,9 @@ BATCH_SIZE = 128
 LR = 0.1
 
 transform_train = transforms.Compose([transforms.RandomCrop(32, padding=4, fill=128),
-                         transforms.RandomHorizontalFlip(), transforms.ToTensor(),
-                         Cutout(n_holes=1, length=16),
-                         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))])
+                                      transforms.RandomHorizontalFlip(), transforms.ToTensor(),
+                                      Cutout(n_holes=1, length=16),
+                                      transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))])
 transform_test = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
@@ -117,8 +118,7 @@ elif args.teacher == 'resnet101':
 elif args.teacher == 'resnet152':
     teacher = resnet152()
 
-
-teacher.load_state_dict(torch.load("./teacher/"+args.teacher+".pth"))
+teacher.load_state_dict(torch.load("./teacher/" + args.teacher + ".pth"))
 teacher.cuda()
 net.to(device)
 orthogonal_penalty = args.beta
@@ -173,40 +173,48 @@ if __name__ == "__main__":
                 #   task loss (cross entropy loss for the classification task)
                 loss += criterion(outputs[index], labels)
                 #   logit distillation loss, CrossEntropy implemented in utils.py.
-                loss += CrossEntropy(outputs[index], teacher_logits[index], 1 + (args.t/250) * float(1+epoch))
+                loss += CrossEntropy(outputs[index], teacher_logits[index], 1 + (args.t / 250) * float(1 + epoch))
 
+            # Orthogonal Loss
+            for index in range(len(student_feature)):
+                weight = list(net.link[index].parameters())[0]
+                weight_trans = weight.permute(1, 0)
+                ones = torch.eye(weight.size(0)).cuda()
+                ones2 = torch.eye(weight.size(1)).cuda()
+                loss += torch.dist(torch.mm(weight, weight_trans), ones, p=2) * args.beta
+                loss += torch.dist(torch.mm(weight_trans, weight), ones2, p=2) * args.beta
 
-            sum_loss += loss.item()
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            total += float(labels.size(0))
+        sum_loss += loss.item()
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        total += float(labels.size(0))
+        _, predicted = torch.max(outputs[0].data, 1)
+        correct += float(predicted.eq(labels.data).cpu().sum())
+
+        if i % 20 == 0:
+            print('[epoch:%d, iter:%d] Loss: %.03f | Acc: %.2f%% '
+                  % (epoch + 1, (i + 1 + epoch * length), sum_loss / (i + 1),
+                     100 * correct / total))
+
+    print("Waiting Test!")
+    with torch.no_grad():
+        correct = 0.0
+        total = 0.0
+        for data in testloader:
+            net.eval()
+            images, labels = data
+            images, labels = images.to(device), labels.to(device)
+            outputs, feature = net(images)
             _, predicted = torch.max(outputs[0].data, 1)
             correct += float(predicted.eq(labels.data).cpu().sum())
+            total += float(labels.size(0))
 
-            if i % 20 == 0:
-                print('[epoch:%d, iter:%d] Loss: %.03f | Acc: %.2f%% '
-                      % (epoch + 1, (i + 1 + epoch * length), sum_loss / (i + 1),
-                         100 * correct / total))
-
-        print("Waiting Test!")
-        with torch.no_grad():
-            correct = 0.0
-            total = 0.0
-            for data in testloader:
-                net.eval()
-                images, labels = data
-                images, labels = images.to(device), labels.to(device)
-                outputs, feature = net(images)
-                _, predicted = torch.max(outputs[0].data, 1)
-                correct += float(predicted.eq(labels.data).cpu().sum())
-                total += float(labels.size(0))
-
-            print('Test Set AccuracyAcc:  %.4f%% ' % (100 * correct / total))
-            if correct/total > best_acc:
-                best_acc = correct/total
-                print("Best Accuracy Updated: ", best_acc * 100)
-                torch.save(net.state_dict(), "./checkpoint/"+args.model+".pth")
-    print("Training Finished, Best Accuracy is %.4f%%" % (best_acc * 100))
+        print('Test Set AccuracyAcc:  %.4f%% ' % (100 * correct / total))
+        if correct / total > best_acc:
+            best_acc = correct / total
+            print("Best Accuracy Updated: ", best_acc * 100)
+            torch.save(net.state_dict(), "./checkpoint/" + args.model + ".pth")
+print("Training Finished, Best Accuracy is %.4f%%" % (best_acc * 100))
 
 
