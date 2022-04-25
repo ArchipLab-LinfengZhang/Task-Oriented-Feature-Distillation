@@ -129,6 +129,8 @@ optimizer = optim.SGD(net.parameters(), lr=LR, weight_decay=args.l2, momentum=0.
 if __name__ == "__main__":
     best_acc = 0
     print("Start Training")
+    start = timeit.default_timer()
+
     for epoch in range(250):
         if epoch in [80, 160, 240]:
             for param_group in optimizer.param_groups:
@@ -184,6 +186,8 @@ if __name__ == "__main__":
                 loss += torch.dist(torch.mm(weight, weight_trans), ones, p=2) * args.beta
                 loss += torch.dist(torch.mm(weight_trans, weight), ones2, p=2) * args.beta
 
+        
+        
         sum_loss += loss.item()
         optimizer.zero_grad()
         loss.backward()
@@ -192,15 +196,18 @@ if __name__ == "__main__":
         _, predicted = torch.max(outputs[0].data, 1)
         correct += float(predicted.eq(labels.data).cpu().sum())
 
-        if i % 20 == 0:
-            print('[epoch:%d, iter:%d] Loss: %.03f | Acc: %.2f%% '
+        print('[epoch:%d, iter:%d] Loss: %.03f | Acc: %.2f%% '
                   % (epoch + 1, (i + 1 + epoch * length), sum_loss / (i + 1),
                      100 * correct / total))
+    end = timeit.default_timer()
+    print("Training time: {}".format(end-start))
 
     print("Waiting Test!")
     with torch.no_grad():
         correct = 0.0
         total = 0.0
+        start = timeit.default_timer()
+
         for data in testloader:
             net.eval()
             images, labels = data
@@ -209,8 +216,10 @@ if __name__ == "__main__":
             _, predicted = torch.max(outputs[0].data, 1)
             correct += float(predicted.eq(labels.data).cpu().sum())
             total += float(labels.size(0))
+        end = timeit.default_timer()
+        print('Test time: {}'.format(end-start))
 
-        print('Test Set AccuracyAcc:  %.4f%% ' % (100 * correct / total))
+        print('Test Set Accuracy Acc:  %.4f%% ' % (100 * correct / total))
         if correct / total > best_acc:
             best_acc = correct / total
             print("Best Accuracy Updated: ", best_acc * 100)
